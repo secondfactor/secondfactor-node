@@ -117,7 +117,9 @@ jobs:
         # repository and the package are both public.
         env:
           VERSION: ${{ needs.build.outputs.version }}
-        run: npm publish "dist/secondfactor-$VERSION.tgz" --ignore-scripts --access public
+        # The leading ./ matters: without it npm reads `dist/<file>.tgz` as
+        # GitHub shorthand for a repository named <file>.tgz owned by `dist`.
+        run: npm publish "./dist/secondfactor-$VERSION.tgz" --ignore-scripts --access public
 
   # Tagging needs write access to the repository, which no other job holds.
   tag:
