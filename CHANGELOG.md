@@ -4,6 +4,15 @@ All notable changes to this package are recorded here. The project follows
 [Semantic Versioning](https://semver.org/); while the version is below 1.0.0, a
 minor release may change behaviour, and every such change is listed.
 
+## 0.1.1 — 2026-10-08
+
+No changes to the library's code or behaviour.
+
+- The first release built and published by this repository's `publish`
+  workflow through npm trusted publishing. It carries a provenance
+  attestation that links the package to the exact commit and workflow run
+  that produced it, which `npm audit signatures` verifies.
+
 ## 0.1.0 — 2026-10-08
 
 The first release.
