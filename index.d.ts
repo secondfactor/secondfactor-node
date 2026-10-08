@@ -4,17 +4,29 @@ export declare const VERSION: string;
 export declare const USER_AGENT: string;
 
 export declare class SecondFactorError extends Error {
-  /** The stable string to branch on, such as `rate_limited` or `not_verified`. */
+  /**
+   * The stable string to branch on, such as `rate_limited`, `not_verified`,
+   * `invalid_response` or `network_error`.
+   */
   code: string | null;
-  /** The HTTP status, or `null` when no answer arrived. */
+  /**
+   * The HTTP status of a refusal, including a refused 3xx redirect, or `null`
+   * when no answer arrived or a successful answer could not be trusted.
+   */
   status: number | null;
 }
 
 export interface SecondFactorOptions {
+  /** Visible ASCII only; anything else throws `TypeError`. */
   apiKey: string;
   serviceSid?: string;
+  /**
+   * Must be `https://`; plain `http://` is accepted only for `localhost`,
+   * `127.0.0.1` and `[::1]`. Anything else throws `TypeError`.
+   */
   baseUrl?: string;
   timeoutMs?: number;
+  /** Must honour `redirect: "manual"` and `signal`. */
   fetch?: typeof fetch;
 }
 
@@ -69,9 +81,11 @@ export interface VerifiedSession {
 }
 
 export declare class SecondFactor {
+  /** Throws `TypeError` for a missing or malformed `apiKey` or an unsafe `baseUrl`. */
   constructor(options: SecondFactorOptions);
   createSession(params: CreateSessionParams): Promise<VerificationSession>;
   retrieveSession(sid: string): Promise<VerificationSession>;
+  /** Rejects with code `not_verified` unless the confirmed session's status is `VERIFIED`. */
   verifySession(storedSid: string, returnToken?: string | null): Promise<VerifiedSession>;
   send(
     to: string,

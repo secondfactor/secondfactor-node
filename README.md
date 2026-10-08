@@ -100,7 +100,8 @@ request is never charged twice.
 Every refused request throws `SecondFactorError` with:
 
 - `code`: the string to branch on;
-- `status`: the HTTP status, or `null` if no answer arrived;
+- `status`: the HTTP status of a refusal, or `null` if no answer arrived or a
+  successful answer could not be trusted;
 - a message for your logs. Never show the message to your users.
 
 | `code` | Thrown by | Meaning |
@@ -113,7 +114,12 @@ Every refused request throws `SecondFactorError` with:
 | `unroutable` | `send`, `createSession` | Not a valid E.164 number. |
 | `rate_limited`, `burst` | `send` | Too many codes to this number. Try later. |
 | `insufficient_funds` | `send` | Top up your balance. |
+| `invalid_response` | any | A successful answer was not the JSON the API sends. |
 | `network_error` | any | secondfactor.ai could not be reached, or the request timed out. |
+
+The API never redirects, so a redirect is refused rather than followed: it
+throws with `status` set to the redirect's 3xx status. Following it could send
+your API key to another host.
 
 The full list is in the [API reference](https://secondfactor.ai/docs).
 
@@ -121,11 +127,11 @@ The full list is in the [API reference](https://secondfactor.ai/docs).
 
 | Option | Default | |
 |---|---|---|
-| `apiKey` | — | Required. |
+| `apiKey` | — | Required. Never logged: the client keeps it in a private field. |
 | `serviceSid` | looked up | Your Service SID (`VA…`). Looked up once on first use when omitted. |
-| `baseUrl` | `https://api.secondfactor.ai` | |
+| `baseUrl` | `https://api.secondfactor.ai` | Must be `https://`. Plain `http://` is accepted only for `localhost`, `127.0.0.1` and `[::1]`. |
 | `timeoutMs` | `10000` | Per request. |
-| `fetch` | `globalThis.fetch` | Supply your own, for example to add tracing. |
+| `fetch` | `globalThis.fetch` | Supply your own, for example to add tracing. It must honour `redirect: "manual"` and `signal`. |
 
 ## Example
 

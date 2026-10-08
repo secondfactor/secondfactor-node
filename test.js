@@ -13,6 +13,7 @@
 const assert = require("node:assert/strict");
 const http = require("node:http");
 const { after, before, beforeEach, describe, it } = require("node:test");
+const util = require("node:util");
 
 const { SecondFactor, SecondFactorError, USER_AGENT } = require("./index.js");
 
@@ -33,14 +34,26 @@ let base;
 let routes;
 let requests;
 
+/**
+ * The stub records every request and answers from `routes`.
+ *
+ * A route maps `"METHOD /path"` to `[status, body]`, or to
+ * `[status, body, headers]` when the answer needs extra headers such as a
+ * redirect's `Location`. A string body is sent as it is, to imitate a proxy's
+ * HTML error page. A function takes over the raw response instead, so a test
+ * can answer slowly or not at all. Anything unrouted is a 404 in the API's
+ * error envelope.
+ */
 before(async () => {
   server = http.createServer((req, res) => {
     let raw = "";
     req.on("data", (chunk) => (raw += chunk));
     req.on("end", () => {
       requests.push({ method: req.method, path: req.url, headers: req.headers, body: raw ? JSON.parse(raw) : null });
-      const [status, payload] = routes[`${req.method} ${req.url}`] || envelope(404, "not_found");
-      res.writeHead(status, { "Content-Type": typeof payload === "string" ? "text/html" : "application/json" });
+      const answer = routes[`${req.method} ${req.url}`] || envelope(404, "not_found");
+      if (typeof answer === "function") return answer(res);
+      const [status, payload, headers = {}] = answer;
+      res.writeHead(status, { "Content-Type": typeof payload === "string" ? "text/html" : "application/json", ...headers });
       res.end(typeof payload === "string" ? payload : JSON.stringify(payload));
     });
   });
@@ -48,7 +61,12 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
 });
 
-after(() => new Promise((resolve) => server.close(resolve)));
+// Tests that never answer leave connections open, which would keep the server
+// from closing.
+after(() => {
+  server.closeAllConnections();
+  return new Promise((resolve) => server.close(resolve));
+});
 
 let sf;
 beforeEach(() => {
@@ -95,6 +113,30 @@ describe("service lookup", () => {
   it("requires an API key", () => {
     assert.throws(() => new SecondFactor({}), TypeError);
   });
+
+  it("keeps a given service sid to one path segment", async () => {
+    const given = new SecondFactor({ apiKey: "sf_key.secret", serviceSid: "../../x", baseUrl: base });
+
+    await rejection(given.send("+9779841000001"));
+
+    assert.equal(last().path, "/v2/Services/..%2F..%2Fx/Verifications");
+  });
+
+  it("keeps a looked-up service sid to one path segment", async () => {
+    routes["GET /v2/Services"] = [200, { services: [{ sid: "../../x" }] }];
+
+    await rejection(sf.send("+9779841000001"));
+
+    assert.equal(last().path, "/v2/Services/..%2F..%2Fx/Verifications");
+  });
+
+  it("throws a SecondFactorError when the lookup finds no service", async () => {
+    routes["GET /v2/Services"] = [200, { services: [] }];
+
+    const error = await rejection(sf.send("+9779841000001"));
+
+    assert.equal(error.code, "invalid_response");
+  });
 });
 
 describe("the wire", () => {
@@ -109,6 +151,86 @@ describe("the wire", () => {
     assert.equal(headers["content-type"], "application/json");
     assert.equal(headers["idempotency-key"], "click-1");
     assert.deepEqual(body, { To: "+9779841000001" });
+  });
+});
+
+describe("transport security", () => {
+  // The API key must only ever travel to the API, and only encrypted.
+
+  for (const status of [301, 302, 303, 307, 308]) {
+    it(`refuses a ${status} redirect and never follows it`, async () => {
+      // fetch would otherwise follow it, and it strips only Authorization on
+      // a cross-origin redirect: X-API-Key would be resent to whatever host
+      // the Location names, even over plain HTTP.
+      route("POST", "Verifications", [status, "", { Location: `${base}/elsewhere` }]);
+
+      const error = await rejection(sf.send("+9779841000001"));
+
+      assert.equal(error.status, status);
+      assert.ok(!requests.some((r) => r.path === "/elsewhere"), "the redirect was followed");
+    });
+  }
+
+  it("refuses a base URL without TLS unless it is this machine", () => {
+    for (const baseUrl of [
+      "http://api.secondfactor.ai",
+      "http://10.0.0.5",
+      "http://localhost.example.com",
+      "ftp://api.secondfactor.ai",
+      "file:///etc/passwd",
+      "api.secondfactor.ai",
+      "https://",
+      "",
+    ]) {
+      assert.throws(() => new SecondFactor({ apiKey: "sf_key.secret", baseUrl }), TypeError, baseUrl);
+    }
+
+    for (const baseUrl of [
+      "https://api.secondfactor.ai",
+      "https://api.secondfactor.ai/",
+      "http://localhost:8000",
+      "http://127.0.0.1:8000",
+      "http://[::1]:8000",
+    ]) {
+      new SecondFactor({ apiKey: "sf_key.secret", baseUrl });
+    }
+  });
+});
+
+describe("the API key stays secret", () => {
+  it("is not shown when the client is inspected, logged or serialized", () => {
+    const client = new SecondFactor({ apiKey: "sf_key.secret", baseUrl: base });
+
+    for (const shown of [util.inspect(client, { showHidden: true, depth: Infinity }), JSON.stringify(client), String(client)]) {
+      assert.ok(!shown.includes("sf_key.secret"), shown);
+    }
+  });
+
+  it("refuses a key that could not be sent as a header, without repeating it", () => {
+    // fetch would throw an error that quotes the whole header value, key
+    // included, and that message would end up in a SecondFactorError.
+    for (const apiKey of ["sf_key.se\ncret", "sf_key.se\0cret", "sf_key.se cret", "sf_key.sé€cret", 42]) {
+      assert.throws(
+        () => new SecondFactor({ apiKey, baseUrl: base }),
+        (error) => error instanceof TypeError && !error.message.includes("cret"),
+      );
+    }
+  });
+
+  it("is removed from a network error's message", async () => {
+    const leaky = new SecondFactor({
+      apiKey: "sf_key.secret",
+      serviceSid: SERVICE,
+      baseUrl: base,
+      fetch: async (url, init) => {
+        throw new Error(`could not send ${init.headers["X-API-Key"]}`);
+      },
+    });
+
+    const error = await rejection(leaky.send("+9779841000001"));
+
+    assert.equal(error.code, "network_error");
+    assert.ok(!error.message.includes("sf_key.secret"), error.message);
   });
 });
 
@@ -159,6 +281,19 @@ describe("verification sessions", () => {
     assert.equal(last().method, "POST");
     assert.deepEqual(last().body, { ReturnToken: "vsr_token" });
   });
+
+  for (const status of ["OPEN", "EXPIRED", "verified", null, undefined]) {
+    it(`signs nobody in on a successful confirm whose status is ${status}`, async () => {
+      // Defence in depth: even a 2xx must say the session is verified before
+      // a phone number is handed back to sign someone in with.
+      route("POST", `VerificationSessions/${SESSION.sid}/Confirm`, [200, { ...SESSION, status }]);
+
+      const error = await rejection(sf.verifySession(SESSION.sid, "vsr_token"));
+
+      assert.equal(error.code, "not_verified");
+      assert.equal(error.status, null);
+    });
+  }
 
   it("sends no token for a headless confirm", async () => {
     route("POST", `VerificationSessions/${SESSION.sid}/Confirm`, [200, SESSION]);
@@ -254,6 +389,45 @@ describe("failures", () => {
 
     assert.equal(error.code, null);
     assert.equal(error.status, 502);
+  });
+
+  for (const [what, body] of [["is not JSON", "<html>OK</html>"], ["is JSON null", "null"], ["is cut short", '{"sid":']]) {
+    it(`turns a successful answer whose body ${what} into a SecondFactorError`, async () => {
+      route("POST", `VerificationSessions/${SESSION.sid}/Confirm`, (res) => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(body);
+      });
+
+      const error = await rejection(sf.verifySession(SESSION.sid, "vsr_token"));
+
+      assert.equal(error.code, "invalid_response");
+      assert.equal(error.status, null);
+    });
+  }
+
+  it("gives up on a server that never answers", async () => {
+    const slow = new SecondFactor({ apiKey: "sf_key.secret", serviceSid: SERVICE, baseUrl: base, timeoutMs: 200 });
+    route("POST", "Verifications", () => {});
+
+    const error = await rejection(slow.send("+9779841000001"));
+
+    assert.equal(error.code, "network_error");
+    assert.equal(error.status, null);
+  });
+
+  it("gives up on a server that stops halfway through its answer", async () => {
+    // The timeout must cover reading the body too, or a stalled answer would
+    // hang the caller, or be taken for an empty success.
+    const slow = new SecondFactor({ apiKey: "sf_key.secret", serviceSid: SERVICE, baseUrl: base, timeoutMs: 200 });
+    route("POST", `VerificationSessions/${SESSION.sid}/Confirm`, (res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.write('{"sid":');
+    });
+
+    const error = await rejection(slow.verifySession(SESSION.sid, "vsr_token"));
+
+    assert.equal(error.code, "network_error");
+    assert.equal(error.status, null);
   });
 
   it("turns no answer at all into a network error", async () => {
