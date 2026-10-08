@@ -4,6 +4,15 @@ All notable changes to this package are recorded here. The project follows
 [Semantic Versioning](https://semver.org/); while the version is below 1.0.0, a
 minor release may change behaviour, and every such change is listed.
 
+## 0.1.2 — 2026-10-08
+
+No changes to the library's code or behaviour.
+
+- The README no longer suggests installing from GitHub; install the package
+  from npm with `npm install secondfactor`.
+- `RELEASING.md` no longer describes the first, hand-made release and the
+  trusted-publishing setup as steps still to come.
+
 ## 0.1.1 — 2026-10-08
 
 No changes to the library's code or behaviour.

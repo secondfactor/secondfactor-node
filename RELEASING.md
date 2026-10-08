@@ -5,10 +5,6 @@ Releases are published to npm under the package name `secondfactor` by the
 maintainer starts it by hand from the Actions tab, and it publishes only from
 `main`.
 
-The one exception is the very first release, which is published by hand,
-because npm cannot set up trusted publishing for a package that does not exist
-yet.
-
 ## How the repository is protected
 
 These settings live on GitHub rather than in this repository, so they are
@@ -31,54 +27,18 @@ recorded here. Keep them in place; the release process depends on them.
   updates, and **private vulnerability reporting** are on. The wiki and
   projects are off, and merged branches are deleted.
 
-## The first release, by hand
-
-1. Use an npm account with two-factor authentication on, and log in:
-   `npm login`.
-2. Make sure `main` is green in CI, then publish from a clean checkout of it so
-   that nothing local can end up in the package:
-
-   ```bash
-   git clone https://github.com/secondfactor/secondfactor-node.git
-   cd secondfactor-node
-   npm test
-   npm pack --dry-run
-   ```
-
-   The list must be `index.js`, `index.d.ts`, `README.md`, `CHANGELOG.md`,
-   `LICENSE` and `package.json`, and nothing else.
-3. Publish: `npm publish`. npm asks for a one-time password.
-4. Tag the published commit and push the tag:
-   `git tag v<version> && git push origin v<version>`.
-
-## Setting up trusted publishing, once
-
-Do this straight after the first release, because a new trusted publisher
-expires unless it completes its first successful publish within 2 days of
-being created.
-
-1. Tell npm to trust the workflow. Either open the package on npmjs.com, go to
-   **Settings → Trusted publishing**, and add a GitHub Actions publisher with
-   owner `secondfactor`, repository `secondfactor-node`, workflow
-   `publish.yml` and environment `npm`; or run the following, which needs
-   npm 11.15.0 or later and two-factor authentication on the account:
-
-   ```bash
-   npm trust github secondfactor --repo secondfactor/secondfactor-node \
-     --file publish.yml --env npm --allow-publish
-   ```
-
-2. Under the package's **Settings → Publishing access**, choose **Require
-   two-factor authentication and disallow tokens**. From then on, only the
-   workflow can publish; no npm token for this package exists, and none should
-   be created.
-3. Release the next version with the workflow, as below, within the 2 days.
+npm must trust the workflow: on the `secondfactor` package, under **Settings →
+Trusted publishing**, a GitHub Actions publisher names owner `secondfactor`,
+repository `secondfactor-node`, workflow `publish.yml` and environment `npm`.
+Keep **Settings → Publishing access** on **Require two-factor authentication
+and disallow tokens**, so that only the workflow can publish. No npm token
+exists for this package, and none should be created.
 
 `package.json`'s `repository.url` must stay exactly
 `git+https://github.com/secondfactor/secondfactor-node.git`; npm refuses a
 trusted publish from any other repository.
 
-## Each later release
+## Each release
 
 1. Choose the version under [Semantic Versioning](https://semver.org/). Set it
    in **both** `package.json` (`version`) and `index.js` (`VERSION`); they must
