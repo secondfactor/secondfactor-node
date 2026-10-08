@@ -15,12 +15,6 @@ headless verification, use
 npm install secondfactor
 ```
 
-Until the first release is on npm, install it from this repository:
-
-```bash
-npm install github:secondfactor/secondfactor-node
-```
-
 ## Set up
 
 From the secondfactor.ai dashboard you need an **API key** (API keys page). For
