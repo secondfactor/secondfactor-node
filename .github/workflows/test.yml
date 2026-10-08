@@ -2,21 +2,68 @@ name: test
 
 on:
   push:
-    branches: [main]
   pull_request:
+  # The publish workflow calls this one, so nothing is released without a
+  # green run of the full matrix on the exact commit being published.
+  workflow_call:
+
+# Tests need nothing beyond reading the code. Pull requests from forks run
+# here too, so the token must never be able to write.
+permissions:
+  contents: read
+
+# A newer push to the same branch makes an older run's result irrelevant. The
+# event name keeps a release's test run apart from the push runs.
+concurrency:
+  group: test-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  unittest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     strategy:
+      # Run every version to the end, so one failure does not hide another.
+      fail-fast: false
       matrix:
-        node-version: [18, 20, 22]
+        # Every major from the `engines` floor upwards, including those past
+        # end of life, so that `engines: >=18` stays a tested promise.
+        node-version: ["18", "20", "22", "24", "26"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node-version }}
+          # The package has no dependencies, so a cache saves nothing and
+          # would only be another input that other runs can write to.
+          package-manager-cache: false
       - name: Tests
         run: npm test
-      - name: The package contains only what it should
-        run: npm pack --dry-run
+      - name: The package packs
+        run: npm pack --dry-run --ignore-scripts
+      - name: The package contains exactly the files it should
+        # Anything else in the tarball, such as a stray .env or a test
+        # fixture, would be published to everyone, so the list is exact.
+        run: |
+          expected="$(printf '%s\n' index.js index.d.ts README.md CHANGELOG.md LICENSE package.json | sort)"
+          actual="$(npm pack --dry-run --ignore-scripts --json | jq -r '.[0].files[].path' | sort)"
+          if [ "$expected" != "$actual" ]; then
+            echo "The packed files differ from the expected list:" >&2
+            diff <(echo "$expected") <(echo "$actual") >&2
+            exit 1
+          fi
+
+  # A single, stable check name to require in branch protection, so the
+  # requirement does not need editing whenever the matrix changes.
+  ci:
+    if: always()
+    needs: unittest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every Node.js version passed
+        env:
+          RESULT: ${{ needs.unittest.result }}
+        run: test "$RESULT" = "success"
