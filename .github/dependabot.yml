@@ -1,0 +1,15 @@
+version: 2
+updates:
+  # Keeps the commit-pinned actions in the workflows current. The cooldown
+  # holds back any release younger than two weeks, so a compromised release is
+  # likely to be found and pulled before it is proposed here. There is no npm
+  # entry because the package has no dependencies.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    groups:
+      actions:
+        patterns: ["*"]

@@ -26,8 +26,21 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lambda-payments/secondfactor-node.git"
+    "url": "git+https://github.com/secondfactor/secondfactor-node.git"
+  },
+  "bugs": {
+    "url": "https://github.com/secondfactor/secondfactor-node/issues"
   },
   "homepage": "https://secondfactor.ai",
-  "keywords": ["otp", "2fa", "phone-verification", "sms", "whatsapp", "secondfactor"]
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "otp",
+    "2fa",
+    "phone-verification",
+    "sms",
+    "whatsapp",
+    "secondfactor"
+  ]
 }

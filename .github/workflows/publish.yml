@@ -1,0 +1,136 @@
+name: publish
+
+# Releases go out only when a maintainer starts this workflow by hand from the
+# Actions tab. Pushes, tags and pull requests never publish.
+on:
+  workflow_dispatch:
+
+# Every job starts with no access at all and is granted only what it needs.
+permissions: {}
+
+# Two releases started close together must not race to tag or upload.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+
+  # Packing reads the project's own code, so this job holds no credential that
+  # could publish or write to the repository. The tarball it packs is handed
+  # to the next job as an artifact, and that exact file is what is published.
+  build:
+    # Only main is released, so a published version always matches main. The
+    # `npm` environment enforces the same rule on GitHub's side.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          # A release build never reads a cache that other runs could have written.
+          package-manager-cache: false
+      - name: The two version declarations agree
+        id: version
+        # `VERSION` in index.js is what the User-Agent header reports, so it
+        # must match the version npm shows.
+        run: |
+          package="$(node -p 'require("./package.json").version')"
+          module="$(node -p 'require("./index.js").VERSION')"
+          echo "package.json: $package, index.js VERSION: $module"
+          test "$package" = "$module"
+          # The version becomes part of a git ref, a file name and a URL, so
+          # accept only a plain release number.
+          [[ "$package" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "version=$package" >> "$GITHUB_OUTPUT"
+      - name: The version has not been tagged before
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION"; then
+            echo "v$VERSION is already tagged; bump the version first." >&2
+            exit 1
+          fi
+      - name: Pack
+        # No lifecycle scripts exist today; --ignore-scripts keeps one added
+        # later from running unnoticed during a release.
+        run: |
+          mkdir dist
+          npm pack --ignore-scripts --pack-destination dist
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  # The only job that can publish. It checks nothing out and runs no project
+  # code: it downloads the tarball the build job packed and hands it to npm.
+  npm:
+    needs: [test, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # npm trusted publishing accepts this job's OIDC token in place of an npm
+    # token, and only from this workflow file and this environment. The
+    # environment is limited to main and requires a reviewer's approval.
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/secondfactor/v/${{ needs.build.outputs.version }}
+    permissions:
+      id-token: write # Mints the OIDC token npm trusted publishing exchanges for a short-lived publish token.
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: package
+          path: dist/
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # Trusted publishing needs Node 22.14.0 or later and npm 11.5.1 or
+          # later. Node 24 bundles npm 11, so no other npm is installed.
+          node-version: "24"
+          # As in npm's own trusted publishing example. It names the registry
+          # explicitly; npm asks GitHub for an OIDC token whose audience is
+          # this registry's host.
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+      - name: npm is new enough for trusted publishing
+        run: |
+          npm --version
+          node -e '
+            const [major, minor, patch] = process.argv[1].split(".").map(Number);
+            const ok = major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
+            if (!ok) { console.error("npm 11.5.1 or later is required for trusted publishing."); process.exit(1); }
+          ' "$(npm --version)"
+      - name: Publish
+        # The provenance attestation is generated automatically, because the
+        # repository and the package are both public.
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: npm publish "dist/secondfactor-$VERSION.tgz" --ignore-scripts --access public
+
+  # Tagging needs write access to the repository, which no other job holds.
+  tag:
+    needs: [build, npm]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write # Creates the release tag.
+    steps:
+      - name: Tag the release
+        # Created through the API, so no checkout or stored credential is
+        # needed.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/v$VERSION" -f sha="$GITHUB_SHA"

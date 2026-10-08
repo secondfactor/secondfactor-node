@@ -27,11 +27,24 @@
  * Every refused request throws `SecondFactorError`, whose `code` is a stable
  * string to branch on. A wrong code is not an error: `check` resolves with
  * `verified: false` and the attempts remaining.
+ *
+ * The API key is sent only to the base URL, only over HTTPS (plain HTTP is
+ * allowed for this machine alone, for local testing), and never to a host a
+ * redirect names: redirects are refused rather than followed.
  */
 
 const VERSION = "0.1.0";
 const DEFAULT_BASE_URL = "https://api.secondfactor.ai";
 const USER_AGENT = `secondfactor-node/${VERSION}`;
+
+// The only hosts the API key may be sent to without TLS. WHATWG URL keeps the
+// brackets around an IPv6 hostname.
+const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
+
+// An API key travels as a header value, so it must be visible ASCII. fetch
+// rejects anything else with an error that quotes the whole value, which
+// would put the key into a message callers are told is safe to log.
+const API_KEY_PATTERN = /^[\x21-\x7e]+$/;
 
 // A check answered 409 carries the verification, whose status says why it can
 // never succeed. Each becomes an error code, so a caller branches on one field.
@@ -45,8 +58,9 @@ const DEAD_VERIFICATION_CODES = {
  * A request secondfactor.ai refused, or could not be reached for.
  *
  * `code` is the stable string to branch on, such as `rate_limited`,
- * `insufficient_funds`, `not_verified` or `network_error`. `status` is the HTTP
- * status, or `null` when no answer arrived. The message is written for
+ * `insufficient_funds`, `not_verified`, `invalid_response` or `network_error`.
+ * `status` is the HTTP status of a refusal, or `null` when no answer arrived
+ * or a successful answer could not be trusted. The message is written for
  * developers and is safe to log; never show it to your end users.
  */
 class SecondFactorError extends Error {
@@ -59,18 +73,30 @@ class SecondFactorError extends Error {
 }
 
 class SecondFactor {
+  // A private field, so the key never appears when the client is logged,
+  // inspected or serialized.
+  #apiKey;
+
   /**
    * @param {object} options
    * @param {string} options.apiKey A key from the dashboard's API keys page.
    * @param {string} [options.serviceSid] Your Service SID (`VA…`). Looked up on
    *   first use when omitted, because every organization has exactly one.
-   * @param {string} [options.baseUrl]
+   * @param {string} [options.baseUrl] Must be `https://`; plain `http://` is
+   *   accepted only for `localhost`, `127.0.0.1` and `[::1]`.
    * @param {number} [options.timeoutMs] Per request; 10 seconds by default.
    * @param {typeof fetch} [options.fetch] A `fetch` to use instead of the global one.
    */
   constructor({ apiKey, serviceSid, baseUrl = DEFAULT_BASE_URL, timeoutMs = 10_000, fetch: fetchImpl } = {}) {
     if (!apiKey) throw new TypeError("apiKey is required.");
-    this.apiKey = apiKey;
+    // The message never repeats the key, since it may be logged.
+    if (typeof apiKey !== "string" || !API_KEY_PATTERN.test(apiKey)) {
+      throw new TypeError("apiKey must be a string of visible ASCII characters; check it for stray whitespace.");
+    }
+    if (!isSafeBaseUrl(baseUrl)) {
+      throw new TypeError("baseUrl must be an https:// URL; plain http:// is accepted only for localhost.");
+    }
+    this.#apiKey = apiKey;
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.timeoutMs = timeoutMs;
     this._serviceSid = serviceSid || null;
@@ -126,6 +152,12 @@ class SecondFactor {
       await this._servicePath(`VerificationSessions/${segment(storedSid)}/Confirm`),
       body,
     );
+    // The API answers 2xx only for a verified session, but a caller signs a
+    // user in on what this resolves with, so it fails closed if that ever
+    // changes.
+    if (session.status !== "VERIFIED") {
+      throw new SecondFactorError("secondfactor.ai confirmed a session that is not verified.", "not_verified", null);
+    }
     return { phone: session.to, clientReferenceId: session.client_reference_id ?? null, session };
   }
 
@@ -179,24 +211,44 @@ class SecondFactor {
   async serviceSid() {
     if (!this._serviceSid) {
       const { services } = await this._request("GET", "/v2/Services");
-      this._serviceSid = services[0].sid;
+      const sid = Array.isArray(services) && services[0] ? services[0].sid : null;
+      if (typeof sid !== "string" || !sid) {
+        throw new SecondFactorError("secondfactor.ai listed no service for this API key.", "invalid_response", null);
+      }
+      this._serviceSid = sid;
     }
     return this._serviceSid;
   }
 
   async _servicePath(path) {
-    return `/v2/Services/${await this.serviceSid()}/${path}`;
+    // A Service SID passed in by the caller is encoded like every other
+    // identifier, so it cannot point the request, and the key, at another path.
+    return `/v2/Services/${segment(await this.serviceSid())}/${path}`;
   }
 
+  /**
+   * One call. Resolves with the JSON object of a 2xx answer, or of a status in
+   * `answers` that carries a `sid`. Anything else throws `SecondFactorError`.
+   * A 409 from the check endpoint carries a verification rather than an error
+   * envelope; its `status` becomes the error code, which `check` then names.
+   */
   async _request(method, path, body, { headers = {}, answers = [] } = {}) {
     const init = {
       method,
       headers: {
-        "X-API-Key": this.apiKey,
+        "X-API-Key": this.#apiKey,
         Accept: "application/json",
         "User-Agent": USER_AGENT,
         ...headers,
       },
+      // fetch follows redirects by default and strips only Authorization when
+      // one crosses origins, so X-API-Key would be resent to whatever host the
+      // Location names, over plain HTTP too. The API never redirects. "manual"
+      // hands the 3xx back unfollowed, and it is refused below like any other
+      // answer that is not a success, keeping its status.
+      redirect: "manual",
+      // The signal also covers reading the body, so a stalled answer is
+      // abandoned too.
       signal: AbortSignal.timeout(this.timeoutMs),
     };
     if (body !== undefined) {
@@ -205,18 +257,36 @@ class SecondFactor {
     }
 
     let response;
+    let text;
     try {
       response = await this._fetch(this.baseUrl + path, init);
+      text = await response.text();
     } catch (cause) {
-      throw new SecondFactorError(`secondfactor.ai unreachable: ${cause.message}`, "network_error", null);
+      // The key is cut out of the message in case a fetch implementation
+      // quotes the request's headers, because this message may be logged.
+      const reason = String(cause && cause.message).split(this.#apiKey).join("[redacted]");
+      throw new SecondFactorError(`secondfactor.ai unreachable: ${reason}`, "network_error", null);
     }
-    let payload = {};
+    let payload = null;
     try {
-      payload = await response.json();
+      payload = JSON.parse(text);
     } catch {
-      payload = {};
+      // Not JSON, such as a proxy's HTML error page; handled below.
     }
-    if (response.ok || (answers.includes(response.status) && payload && payload.sid)) {
+    const isObject = payload !== null && typeof payload === "object" && !Array.isArray(payload);
+    if (response.ok) {
+      // A success the library cannot read is never passed on as an empty one.
+      if (!isObject) {
+        throw new SecondFactorError(
+          `secondfactor.ai answered HTTP ${response.status} with a body that is not a JSON object.`,
+          "invalid_response",
+          null,
+        );
+      }
+      return payload;
+    }
+    if (!isObject) payload = {};
+    if (answers.includes(response.status) && payload.sid) {
       return payload;
     }
     const code = typeof payload.code === "string" ? payload.code : typeof payload.status === "string" ? payload.status : null;
@@ -228,6 +298,18 @@ class SecondFactor {
 /** Drop parameters left unset, so they are not sent as null. */
 function withoutEmpty(body) {
   return Object.fromEntries(Object.entries(body).filter(([, value]) => value !== undefined && value !== null));
+}
+
+/** Whether the API key may be sent to `baseUrl`: over HTTPS, or to this machine. */
+function isSafeBaseUrl(baseUrl) {
+  let url;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return false;
+  }
+  if (!url.hostname) return false;
+  return url.protocol === "https:" || (url.protocol === "http:" && LOOPBACK_HOSTS.includes(url.hostname));
 }
 
 /** A path segment, encoded so an identifier cannot change the path. */
