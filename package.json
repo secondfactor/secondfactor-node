@@ -1,0 +1,33 @@
+{
+  "name": "@secondfactor/node",
+  "version": "0.1.0",
+  "description": "secondfactor.ai for Node.js servers: hosted and headless phone verification, and OTP send and check. No dependencies.",
+  "license": "MIT",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lambda-payments/secondfactor-node.git"
+  },
+  "homepage": "https://secondfactor.ai",
+  "keywords": ["otp", "2fa", "phone-verification", "sms", "whatsapp", "secondfactor"]
+}
