@@ -7,7 +7,7 @@ Type declarations are included.
 This library runs on **your server**. It holds your API key, which must never
 reach a browser or a mobile app. For the browser or React Native side of
 headless verification, use
-[`@secondfactor/js`](https://github.com/lambda-payments/secondfactor-js).
+[`@secondfactor/js`](https://github.com/secondfactor/secondfactor-js).
 
 ## Install
 
@@ -18,7 +18,7 @@ npm install secondfactor
 Until the first release is on npm, install it from this repository:
 
 ```bash
-npm install github:lambda-payments/secondfactor-node
+npm install github:secondfactor/secondfactor-node
 ```
 
 ## Set up
