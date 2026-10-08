@@ -7,12 +7,12 @@ Type declarations are included.
 This library runs on **your server**. It holds your API key, which must never
 reach a browser or a mobile app. For the browser or React Native side of
 headless verification, use
-[`@secondfactor/otp`](https://github.com/lambda-payments/secondfactor-js).
+[`@secondfactor/js`](https://github.com/lambda-payments/secondfactor-js).
 
 ## Install
 
 ```bash
-npm install @secondfactor/node
+npm install secondfactor
 ```
 
 Until the first release is on npm, install it from this repository:
@@ -28,8 +28,8 @@ the hosted page you also need a **return origin**, such as
 `https://app.example.com`, under **Settings → Hosted verification**.
 
 ```js
-const { SecondFactor, SecondFactorError } = require("@secondfactor/node");
-// or: import { SecondFactor, SecondFactorError } from "@secondfactor/node";
+const { SecondFactor, SecondFactorError } = require("secondfactor");
+// or: import { SecondFactor, SecondFactorError } from "secondfactor";
 
 const sf = new SecondFactor({ apiKey: process.env.SECONDFACTOR_API_KEY });
 ```
@@ -66,7 +66,7 @@ anyone can edit a URL. `verifySession` succeeds once. A second call throws
 
 Draw the screens yourself. Your server creates the session and gives its token
 to your frontend, which calls our session endpoints with
-`@secondfactor/otp`. No proxy is needed, and your API key stays on your server.
+`@secondfactor/js`. No proxy is needed, and your API key stays on your server.
 
 ```js
 const session = await sf.createSession({ to: "+9779841000001", mode: "headless" });

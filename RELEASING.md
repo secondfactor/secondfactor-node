@@ -1,13 +1,15 @@
 # Releasing
 
 Releases are published by hand from this repository to npm as
-`@secondfactor/node`. Only members of the `@secondfactor` npm organization
-with publish rights can publish.
+`secondfactor`. Only the package's maintainers on npm can publish; the
+`@secondfactor` npm organization that owns the browser client
+(`@secondfactor/js`) should be added as an owner too, so access is managed in
+one place.
 
 ## One-time setup
 
-1. Have an npm account with two-factor authentication on, added to the
-   `@secondfactor` organization.
+1. Have an npm account with two-factor authentication on, listed as a
+   maintainer of `secondfactor` (`npm owner ls secondfactor`).
 2. `npm login`
 
 ## Each release
@@ -22,8 +24,7 @@ with publish rights can publish.
 5. Check exactly what will be published: `npm pack --dry-run`. The list must be
    `index.js`, `index.d.ts`, `README.md`, `CHANGELOG.md`, `LICENSE` and
    `package.json`, and nothing else.
-6. Publish: `npm publish --access public`. A scoped package is private unless
-   `--access public` is given.
+6. Publish: `npm publish`.
 7. Tag and push: `git tag v<version> && git push origin main v<version>`.
 8. Create a GitHub release from the tag, pasting the changelog section.
 

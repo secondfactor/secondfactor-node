@@ -11,7 +11,7 @@
  * your own frontend. When the user is done, your server confirms the session,
  * once.
  *
- *   const { SecondFactor } = require("@secondfactor/node");
+ *   const { SecondFactor } = require("secondfactor");
  *   const sf = new SecondFactor({ apiKey: process.env.SECONDFACTOR_API_KEY });
  *
  *   const session = await sf.createSession({ to: "+9779841000001", returnUrl: "https://app.example.com/verified" });

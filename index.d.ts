@@ -1,4 +1,4 @@
-/** Type declarations for `@secondfactor/node`. See `index.js` for behaviour. */
+/** Type declarations for `secondfactor`. See `index.js` for behaviour. */
 
 export declare const VERSION: string;
 export declare const USER_AGENT: string;

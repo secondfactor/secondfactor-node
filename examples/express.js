@@ -3,7 +3,7 @@
 /**
  * A minimal Express app verifying a phone number with secondfactor.ai.
  *
- *   npm install express express-session @secondfactor/node
+ *   npm install express express-session secondfactor
  *   SECONDFACTOR_API_KEY=sf_... SESSION_SECRET=... node examples/express.js
  *
  * List `http://localhost:3000` as a return origin under Settings → Hosted
@@ -16,7 +16,7 @@
 
 const express = require("express");
 const session = require("express-session");
-const { SecondFactor, SecondFactorError } = require("@secondfactor/node");
+const { SecondFactor, SecondFactorError } = require("secondfactor");
 
 const sf = new SecondFactor({ apiKey: process.env.SECONDFACTOR_API_KEY });
 const app = express();
@@ -81,7 +81,7 @@ app.post("/headless/start", async (req, res, next) => {
   try {
     const created = await sf.createSession({ to: req.body.phone, mode: "headless" });
     req.session.sfSid = created.sid;
-    // Your frontend passes this token to @secondfactor/otp's withSession().
+    // Your frontend passes this token to @secondfactor/js's withSession().
     res.json({ clientToken: created.client_token });
   } catch (error) {
     next(error);
