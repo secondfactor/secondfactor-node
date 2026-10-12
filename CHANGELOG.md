@@ -4,7 +4,7 @@ All notable changes to this package are recorded here. The project follows
 [Semantic Versioning](https://semver.org/); while the version is below 1.0.0, a
 minor release may change behaviour, and every such change is listed.
 
-## Unreleased
+## 0.2.0 — 2026-10-12
 
 ### Removed
 

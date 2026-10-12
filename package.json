@@ -1,6 +1,6 @@
 {
   "name": "secondfactor",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "secondfactor.ai for Node.js servers: hosted and headless phone verification, and OTP send and check. No dependencies.",
   "license": "MIT",
   "main": "index.js",

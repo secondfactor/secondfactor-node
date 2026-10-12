@@ -33,7 +33,7 @@
  * redirect names: redirects are refused rather than followed.
  */
 
-const VERSION = "0.1.2";
+const VERSION = "0.2.0";
 const DEFAULT_BASE_URL = "https://api.secondfactor.ai";
 const USER_AGENT = `secondfactor-node/${VERSION}`;
 
