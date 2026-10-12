@@ -111,16 +111,14 @@ class SecondFactor {
   /**
    * Start verifying `to` (E.164, for example `+9779841000001`).
    *
-   * A hosted session needs `returnUrl`, on an origin listed under Settings →
-   * Hosted verification, and resolves with `url`: redirect the user there. A
-   * headless session (`mode: "headless"`) takes no `returnUrl` and resolves
-   * with `client_token`: give it to your own frontend. Either is returned only
-   * this once. Store the returned `sid` against the user's pending sign-in.
+   * `returnUrl` must be on an origin listed under Settings → Hosted
+   * verification. Resolves with `url`, the hosted verification page: redirect
+   * the user there. `url` is returned only this once. Store the returned `sid`
+   * against the user's pending sign-in.
    */
-  async createSession({ to, mode = "hosted", returnUrl, clientReferenceId, templateSid } = {}) {
+  async createSession({ to, returnUrl, clientReferenceId, templateSid } = {}) {
     return this._request("POST", await this._servicePath("VerificationSessions"), {
       To: to,
-      Mode: mode,
       ReturnUrl: returnUrl,
       ClientReferenceId: clientReferenceId,
       TemplateSid: templateSid,
@@ -137,8 +135,8 @@ class SecondFactor {
    *
    * Pass the `sid` you stored when you created the session, never the
    * `sf_session_id` from the return URL: that parameter only helps you find
-   * your stored session, and anyone can edit a URL. For a hosted session, pass
-   * the `sf_return_token` from the return URL; a headless session needs none.
+   * your stored session, and anyone can edit a URL. Pass the `sf_return_token`
+   * from the return URL as `returnToken`.
    *
    * Resolves with `{ phone, clientReferenceId, session }`, where `phone` is the
    * number that was proven. Throws `SecondFactorError` otherwise, with `code`

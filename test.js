@@ -20,7 +20,6 @@ const { SecondFactor, SecondFactorError, USER_AGENT } = require("./index.js");
 const SERVICE = "VA0a1b2c3d4e5f60718293a4b5c6d7e8f9";
 const SESSION = {
   sid: "VSN26H7K3MQ2XWZ8RT4",
-  mode: "hosted",
   status: "VERIFIED",
   to: "+9779841000001",
   client_reference_id: "signup-8812",
@@ -247,19 +246,9 @@ describe("verification sessions", () => {
     assert.equal(session.url, "https://verify/#vst_x");
     assert.deepEqual(last().body, {
       To: "+9779841000001",
-      Mode: "hosted",
       ReturnUrl: "https://app.example.com/verified",
       ClientReferenceId: "signup-8812",
     });
-  });
-
-  it("creates a headless session", async () => {
-    route("POST", "VerificationSessions", [201, { sid: SESSION.sid, client_token: "vst_x" }]);
-
-    const session = await sf.createSession({ to: "+9779841000001", mode: "headless" });
-
-    assert.equal(session.client_token, "vst_x");
-    assert.deepEqual(last().body, { To: "+9779841000001", Mode: "headless" });
   });
 
   it("throws the server's code and message for a refused create", async () => {
@@ -294,14 +283,6 @@ describe("verification sessions", () => {
       assert.equal(error.status, null);
     });
   }
-
-  it("sends no token for a headless confirm", async () => {
-    route("POST", `VerificationSessions/${SESSION.sid}/Confirm`, [200, SESSION]);
-
-    await sf.verifySession(SESSION.sid);
-
-    assert.deepEqual(last().body, {});
-  });
 
   for (const [status, code] of [
     [400, "missing_return_token"],
