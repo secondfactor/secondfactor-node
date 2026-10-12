@@ -35,10 +35,6 @@ app.get("/", (req, res) => {
     <form method="post" action="/verify">
       <input name="phone" placeholder="+9779841000001" required>
       <button>Verify with the hosted page</button>
-    </form>
-    <form method="post" action="/headless/start">
-      <input name="phone" placeholder="+9779841000001" required>
-      <button>Start a headless session</button>
     </form>`);
 });
 
@@ -71,32 +67,6 @@ app.get("/verified", async (req, res, next) => {
     if (error instanceof SecondFactorError) {
       return res.status(400).send(`Not verified (${error.code}). <a href="/">Try again</a>`);
     }
-    next(error);
-  }
-});
-
-// ── Headless ────────────────────────────────────────────────────────────────
-
-app.post("/headless/start", async (req, res, next) => {
-  try {
-    const created = await sf.createSession({ to: req.body.phone, mode: "headless" });
-    req.session.sfSid = created.sid;
-    // Your frontend passes this token to @secondfactor/js's withSession().
-    res.json({ clientToken: created.client_token });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post("/headless/done", async (req, res, next) => {
-  const storedSid = req.session.sfSid;
-  delete req.session.sfSid;
-  if (!storedSid) return res.status(400).json({ verified: false });
-  try {
-    const { phone } = await sf.verifySession(storedSid);
-    res.json({ verified: true, phone });
-  } catch (error) {
-    if (error instanceof SecondFactorError) return res.status(400).json({ verified: false, reason: error.code });
     next(error);
   }
 });

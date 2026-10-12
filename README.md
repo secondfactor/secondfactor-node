@@ -5,9 +5,13 @@ Verify phone numbers from your Node.js server with
 Type declarations are included.
 
 This library runs on **your server**. It holds your API key, which must never
-reach a browser or a mobile app. For the browser or React Native side of
-headless verification, use
-[`@secondfactor/js`](https://github.com/secondfactor/secondfactor-js).
+reach a browser or a mobile app. There are two ways to verify a number with
+it: send your user to our hosted verification page, or send and check codes
+directly and draw your own screens. For the hosted page, the browser or React
+Native side can use
+[`@secondfactor/js`](https://github.com/secondfactor/secondfactor-js), which
+opens the page and reads the result when the user returns; it never calls the
+API itself.
 
 ## Install
 
@@ -55,21 +59,6 @@ try {
 **Always confirm the `sid` you stored**, never the `sf_session_id` from the URL:
 anyone can edit a URL. `verifySession` succeeds once. A second call throws
 `already_confirmed`, so a replayed return URL cannot sign anyone in.
-
-## Headless verification
-
-Draw the screens yourself. Your server creates the session and gives its token
-to your frontend, which calls our session endpoints with
-`@secondfactor/js`. No proxy is needed, and your API key stays on your server.
-
-```js
-const session = await sf.createSession({ to: "+9779841000001", mode: "headless" });
-req.session.sfSid = session.sid;
-res.json({ clientToken: session.client_token });   // to your frontend
-
-// When your frontend says the user is done:
-const { phone } = await sf.verifySession(req.session.sfSid);   // throws unless VERIFIED
-```
 
 ## Direct sends
 

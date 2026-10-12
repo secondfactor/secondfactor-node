@@ -34,7 +34,6 @@ export type SessionStatus = "OPEN" | "VERIFIED" | "CANCELED" | "FAILED" | "EXPIR
 
 export interface VerificationSession {
   sid: string;
-  mode: "hosted" | "headless";
   status: SessionStatus;
   failure_reason: string | null;
   to: string;
@@ -46,10 +45,8 @@ export interface VerificationSession {
   expires_at: string;
   date_created: string;
   date_completed: string | null;
-  /** Hosted sessions, on creation only. */
+  /** The hosted verification page, on creation only. */
   url?: string;
-  /** Headless sessions, on creation only. */
-  client_token?: string;
 }
 
 export interface Verification {
@@ -67,8 +64,7 @@ export interface Verification {
 
 export interface CreateSessionParams {
   to: string;
-  mode?: "hosted" | "headless";
-  returnUrl?: string;
+  returnUrl: string;
   clientReferenceId?: string;
   templateSid?: string;
 }
@@ -86,7 +82,7 @@ export declare class SecondFactor {
   createSession(params: CreateSessionParams): Promise<VerificationSession>;
   retrieveSession(sid: string): Promise<VerificationSession>;
   /** Rejects with code `not_verified` unless the confirmed session's status is `VERIFIED`. */
-  verifySession(storedSid: string, returnToken?: string | null): Promise<VerifiedSession>;
+  verifySession(storedSid: string, returnToken: string | null | undefined): Promise<VerifiedSession>;
   send(
     to: string,
     options?: { code?: string; templateSid?: string; idempotencyKey?: string },
